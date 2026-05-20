@@ -3,34 +3,45 @@ package main.java;
 import java.util.*;
 
 public class GrafoCovid {
-    private int[][] distancias;
-    private int[][] siguientes;
+    private int[][] grafoOriginal;
+    private int[][] distancias;    // Resultado de Floyd
+    private int[][] siguientes;    // Matriz de caminos de Floyd
     private Map<String, Integer> ciudadAIndice;
     private Map<Integer, String> indiceACiudad;
     private int numNodos;
     private int capacidad;
-    private final int INF = 999999999; // Representa el infinito
+    public static final int INF = 999999999;
 
     public GrafoCovid(int capacidad) {
         this.capacidad = capacidad;
+        grafoOriginal = new int[capacidad][capacidad];
         distancias = new int[capacidad][capacidad];
         siguientes = new int[capacidad][capacidad];
         ciudadAIndice = new HashMap<>();
         indiceACiudad = new HashMap<>();
         numNodos = 0;
-
-        inicializarMatrices();
+        inicializarGrafoOriginal();
     }
 
-    private void inicializarMatrices() {
+    private void inicializarGrafoOriginal() {
         for (int i = 0; i < capacidad; i++) {
-            Arrays.fill(distancias[i], INF);
-            Arrays.fill(siguientes[i], -1);
-            distancias[i][i] = 0;
+            Arrays.fill(grafoOriginal[i], INF);
+            grafoOriginal[i][i] = 0;
         }
     }
 
-    // Agrega un nodo si no existe
+    // Reinicia las matrices de Floyd copiando desde el grafo original
+    private void reiniciarFloyd() {
+        for (int i = 0; i < numNodos; i++) {
+            for (int j = 0; j < numNodos; j++) {
+                distancias[i][j] = grafoOriginal[i][j];
+                siguientes[i][j] = (grafoOriginal[i][j] != INF && i != j) ? j : -1;
+            }
+            distancias[i][i] = 0;
+            siguientes[i][i] = i;
+        }
+    }
+
     public void agregarCiudad(String ciudad) {
         if (!ciudadAIndice.containsKey(ciudad) && numNodos < capacidad) {
             ciudadAIndice.put(ciudad, numNodos);
@@ -39,40 +50,31 @@ public class GrafoCovid {
         }
     }
 
-    // Agrega o actualiza un arco (distancia)
     public void agregarRuta(String origen, String destino, int distancia) {
         agregarCiudad(origen);
         agregarCiudad(destino);
-
         int u = ciudadAIndice.get(origen);
         int v = ciudadAIndice.get(destino);
-
-        distancias[u][v] = distancia;
-        siguientes[u][v] = v; // El siguiente nodo para ir de u a v, inicialmente es v
+        grafoOriginal[u][v] = distancia;
     }
 
-    // Interrumpe el tráfico entre dos ciudades
     public void eliminarRuta(String origen, String destino) {
         if (ciudadAIndice.containsKey(origen) && ciudadAIndice.containsKey(destino)) {
             int u = ciudadAIndice.get(origen);
             int v = ciudadAIndice.get(destino);
-            distancias[u][v] = INF;
-            siguientes[u][v] = -1;
+            grafoOriginal[u][v] = INF;
         }
     }
 
-    // Algoritmo de Floyd-Warshall
     public void calcularFloyd() {
-        // k es el nodo intermedio
+        reiniciarFloyd();
         for (int k = 0; k < numNodos; k++) {
-            // i es el nodo de origen
             for (int i = 0; i < numNodos; i++) {
-                // j es el nodo de destino
                 for (int j = 0; j < numNodos; j++) {
                     if (distancias[i][k] != INF && distancias[k][j] != INF) {
-                        if (distancias[i][k] + distancias[k][j] < distancias[i][j]) {
-                            distancias[i][j] = distancias[i][k] + distancias[k][j];
-                            // Actualizamos el camino para pasar por k
+                        long nuevaDist = (long) distancias[i][k] + distancias[k][j];
+                        if (nuevaDist < distancias[i][j]) {
+                            distancias[i][j] = (int) nuevaDist;
                             siguientes[i][j] = siguientes[i][k];
                         }
                     }
@@ -81,53 +83,55 @@ public class GrafoCovid {
         }
     }
 
-    // Obtener la ruta completa y la distancia
     public String obtenerRutaMinima(String origen, String destino) {
         if (!ciudadAIndice.containsKey(origen) || !ciudadAIndice.containsKey(destino)) {
             return "Una o ambas ciudades no existen en el mapa.";
         }
-
         int u = ciudadAIndice.get(origen);
         int v = ciudadAIndice.get(destino);
 
-        if (distancias[u][v] == INF) {
+        if (u == v) return "El origen y destino son la misma ciudad.";
+
+        if (distancias[u][v] == INF || siguientes[u][v] == -1) {
             return "No hay ruta disponible entre " + origen + " y " + destino + ".";
         }
 
-        StringBuilder ruta = new StringBuilder();
-        ruta.append(origen);
+        StringBuilder ruta = new StringBuilder(origen);
         int actual = u;
+        int maxSteps = numNodos + 1;
+        int steps = 0;
 
-        while (actual != v) {
-            actual = siguientes[actual][v];
+        while (actual != v && steps < maxSteps) {
+            int siguiente = siguientes[actual][v];
+            if (siguiente == -1) {
+                return "No hay ruta disponible entre " + origen + " y " + destino + ".";
+            }
+            actual = siguiente;
             ruta.append(" -> ").append(indiceACiudad.get(actual));
+            steps++;
         }
 
         return "Distancia total: " + distancias[u][v] + " KM.\nRuta: " + ruta.toString();
     }
 
-    // Calcular el centro del grafo según el documento
     public String encontrarCentro() {
         int[] excentricidades = new int[numNodos];
 
-        // Encontrar el costo máximo en cada columna i [cite: 25]
         for (int i = 0; i < numNodos; i++) {
             int maxColumna = 0;
             for (int j = 0; j < numNodos; j++) {
-                if (distancias[j][i] > maxColumna && distancias[j][i] != INF) {
+                if (i != j && distancias[j][i] != INF && distancias[j][i] > maxColumna) {
                     maxColumna = distancias[j][i];
                 }
             }
-            excentricidades[i] = maxColumna; // Excentricidad del vértice i [cite: 25]
+            excentricidades[i] = maxColumna;
         }
 
-        // Encontrar el vértice con excentricidad mínima [cite: 26]
         int minExcentricidad = INF;
         int indiceCentro = -1;
 
         for (int i = 0; i < numNodos; i++) {
-            // Ignoramos los nodos aislados (excentricidad 0 si no llega nadie, o INF)
-            if (excentricidades[i] < minExcentricidad && excentricidades[i] > 0) {
+            if (excentricidades[i] > 0 && excentricidades[i] < minExcentricidad) {
                 minExcentricidad = excentricidades[i];
                 indiceCentro = i;
             }
@@ -135,24 +139,41 @@ public class GrafoCovid {
 
         if (indiceCentro != -1) {
             return "El centro del grafo es: " + indiceACiudad.get(indiceCentro) +
-                    " (Excentricidad: " + minExcentricidad + ")"; // Centro de G [cite: 26]
+                    " (Excentricidad: " + minExcentricidad + ")";
         } else {
             return "No se pudo determinar un centro válido (el grafo podría estar desconectado).";
         }
     }
 
-    // Método para mostrar la matriz de adyacencia
     public void mostrarMatrizAdyacencia() {
-        System.out.println("\n--- Matriz de Adyacencia (Distancias más cortas) ---");
+        System.out.println("\n--- Matriz de Distancias Más Cortas (Floyd-Warshall) ---");
+        System.out.print("\t\t");
+        for (int j = 0; j < numNodos; j++) {
+            String nombre = indiceACiudad.get(j);
+            System.out.printf("%-14s", nombre);
+        }
+        System.out.println();
         for (int i = 0; i < numNodos; i++) {
+            System.out.printf("%-14s", indiceACiudad.get(i));
             for (int j = 0; j < numNodos; j++) {
                 if (distancias[i][j] == INF) {
-                    System.out.print("INF\t");
+                    System.out.printf("%-14s", "INF");
                 } else {
-                    System.out.print(distancias[i][j] + "\t");
+                    System.out.printf("%-14d", distancias[i][j]);
                 }
             }
             System.out.println();
         }
     }
+
+    public int getDistancia(String origen, String destino) {
+        if (!ciudadAIndice.containsKey(origen) || !ciudadAIndice.containsKey(destino)) return INF;
+        return distancias[ciudadAIndice.get(origen)][ciudadAIndice.get(destino)];
+    }
+
+    public boolean existeCiudad(String ciudad) {
+        return ciudadAIndice.containsKey(ciudad);
+    }
+
+    public int getNumNodos() { return numNodos; }
 }
